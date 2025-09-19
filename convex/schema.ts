@@ -6,6 +6,7 @@ const applicationTables = {
   games: defineTable({
     status: v.union(v.literal("waiting"), v.literal("playing"), v.literal("finished")),
     currentPlayer: v.optional(v.id("users")),
+    seeding: v.optional(v.boolean()),
     lastPlay: v.optional(v.object({
       playerId: v.id("users"),
       cards: v.array(v.object({
@@ -37,6 +38,8 @@ const applicationTables = {
     position: v.number(),
     hasPlayed: v.boolean(),
     finished: v.boolean(),
+    seededThrees: v.optional(v.number()),
+    hadThreeSpades: v.optional(v.boolean()),
     finishPosition: v.optional(v.number()),
   }).index("by_game", ["gameId"]).index("by_user_game", ["userId", "gameId"]),
 };

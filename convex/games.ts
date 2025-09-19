@@ -89,16 +89,33 @@ function compareCards(a: Card, b: Card): number {
   return getSuitValue(a.suit) - getSuitValue(b.suit);
 }
 
-function findPlayerWithThreeOfDiamonds(players: any[]): string | null {
-  for (const player of players) {
-    const hasThreeOfDiamonds = player.hand.some(
-      (card: Card) => card.rank === "3" && card.suit === "diamonds"
-    );
-    if (hasThreeOfDiamonds) {
-      return player.userId;
-    }
-  }
-  return null;
+// Custom rule: Starting player selection
+// - Player with the most '3' rank cards starts
+// - If there is a tie, the player who holds 3 of hearts starts
+// - If still tied (no one among ties has 3♥), fallback to the lowest table position
+function findStartingPlayerByThrees(players: Array<{ userId: string; hand: Card[]; position: number }>): string | null {
+  if (players.length === 0) return null;
+
+  // Count number of rank '3' in each player's hand
+  const counts = players.map((p) => ({
+    userId: p.userId,
+    position: p.position,
+    count: p.hand.reduce((acc, c) => acc + (c.rank === "3" ? 1 : 0), 0),
+    hasThreeHearts: p.hand.some((c) => c.rank === "3" && c.suit === "hearts"),
+  }));
+
+  const maxCount = Math.max(...counts.map((c) => c.count));
+  const tied = counts.filter((c) => c.count === maxCount);
+
+  if (tied.length === 0) return null;
+
+  // Prefer the player who has 3♥ among those tied
+  const withThreeHearts = tied.find((c) => c.hasThreeHearts);
+  if (withThreeHearts) return withThreeHearts.userId as any;
+
+  // Fallback: lowest position among ties
+  const byPos = [...tied].sort((a, b) => a.position - b.position);
+  return byPos[0].userId as any;
 }
 
 function analyzePlay(cards: Card[]): { playType: PlayType; value: number } {
@@ -137,6 +154,24 @@ function analyzePlay(cards: Card[]): { playType: PlayType; value: number } {
             getSuitValue(cards[1].suit),
             getSuitValue(cards[2].suit)
           ),
+      };
+    }
+  }
+
+  // Four of a kind (bomb) can be represented as 4 cards (pure quad) or 5 cards (quad + kicker)
+  if (cards.length === 4) {
+    const rankCounts = cards.reduce<Record<string, number>>((acc, card) => {
+      acc[card.rank] = (acc[card.rank] || 0) + 1;
+      return acc;
+    }, {});
+
+    const rankKeys = Object.keys(rankCounts);
+    if (rankKeys.length === 1) {
+      // All four the same rank
+      const quadRank = rankKeys[0];
+      return {
+        playType: "fourOfAKind",
+        value: getRankValue(quadRank) * 100,
       };
     }
   }
@@ -225,28 +260,24 @@ function canBeatPlay(newCards: Card[], lastPlay: any): boolean {
   const newPlay = analyzePlay(newCards);
   const lastPlayAnalysis = analyzePlay(lastPlay.cards);
 
-  // Must be same type and length for basic plays
-  if (newPlay.playType !== lastPlayAnalysis.playType) {
-    // Special case: higher combinations can beat lower ones
-    const playTypeRanks = {
-      single: 1,
-      pair: 2,
-      triple: 3,
-      straight: 4,
-      flush: 5,
-      fullHouse: 6,
-      fourOfAKind: 7,
-      straightFlush: 8,
-    };
+  // Special bomb rule: A four-of-a-kind (4 or 5 cards) can beat any single '2' (any suit)
+  const isLastSingleTwo =
+    lastPlay.cards.length === 1 && lastPlay.cards[0].rank === "2";
 
-    if (
-      playTypeRanks[newPlay.playType] <=
-      playTypeRanks[lastPlayAnalysis.playType]
-    ) {
-      return false;
-    }
+
+  if (isLastSingleTwo && newPlay.playType === "fourOfAKind") {
+    return true;
   }
 
+  // Otherwise, require same play type and same length
+  if (
+    newPlay.playType !== lastPlayAnalysis.playType ||
+    newCards.length !== lastPlay.cards.length
+  ) {
+    return false;
+  }
+
+  // Compare values within same type and same length
   return newPlay.value > lastPlayAnalysis.value;
 }
 
@@ -342,17 +373,24 @@ export const startGame = mutation({
       await ctx.db.patch(players[i]._id, { hand });
     }
 
-    // Find player with 3 of diamonds to start
+    // Determine starting player per custom rule: most 3s; tie -> 3♥; else lowest position
     const updatedPlayers = await ctx.db
       .query("players")
       .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
       .collect();
 
-    const startingPlayerId = findPlayerWithThreeOfDiamonds(updatedPlayers);
+    const startingPlayerId = findStartingPlayerByThrees(
+      updatedPlayers as any
+    );
 
+    // Begin with a seeding phase where players can only play 3s to decide the starter
+    // The earliest currentPlayer will be position 0 to kick off seeding turns
     await ctx.db.patch(args.gameId, {
       status: "playing",
-      currentPlayer: (startingPlayerId || updatedPlayers[0].userId) as any,
+      seeding: true,
+      currentPlayer: updatedPlayers.find((p) => p.position === 0)?.userId as any,
+      lastPlay: undefined,
+      consecutivePasses: 0,
     });
 
     return args.gameId;
@@ -416,19 +454,85 @@ export const playCards = mutation({
 
     if (!hasAllCards) throw new Error("You don't have these cards");
 
-    // Validate play against last play
-    if (!canBeatPlay(args.cards, game.lastPlay)) {
-      throw new Error("This play doesn't beat the last play");
+    // If in seeding phase: only allow playing 3s; accumulate counts and advance turn
+    if ((game as any).seeding) {
+      const allThrees = args.cards.length > 0 && args.cards.every((c) => c.rank === "3");
+      if (!allThrees) {
+        throw new Error("Seeding phase: you can only play 3s");
+      }
+
+      const threesCount = args.cards.length;
+      const hasThreeSpades = args.cards.some((c) => c.rank === "3" && c.suit === "spades");
+
+      await ctx.db.patch(player._id, {
+        seededThrees: (player as any).seededThrees ? (player as any).seededThrees + threesCount : threesCount,
+        hadThreeSpades: (player as any).hadThreeSpades || hasThreeSpades,
+      });
+
+      // Remove played cards from hand
+      const newHandSeeding = player.hand.filter(
+        (handCard) => !args.cards.some((playedCard) => handCard.suit === playedCard.suit && handCard.rank === playedCard.rank)
+      );
+      await ctx.db.patch(player._id, { hand: newHandSeeding, hasPlayed: true });
+
+      // Find next player in position order that hasn't finished
+      const playersAll = await ctx.db
+        .query("players")
+        .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+        .collect();
+
+      const totalPlayers = playersAll.length;
+      let nextPlayerIndex = (player.position + 1) % totalPlayers;
+      let nextPlayer = playersAll.find((p) => p.position === nextPlayerIndex);
+      while (nextPlayer && nextPlayer.finished) {
+        nextPlayerIndex = (nextPlayerIndex + 1) % totalPlayers;
+        nextPlayer = playersAll.find((p) => p.position === nextPlayerIndex);
+      }
+
+      // Determine if seeding is done: if all players have taken at least one seeding turn
+      // We'll consider seeding done when every player has either played some 3 or has no 3s in hand
+      const everyoneSeeded = playersAll.every((p) => {
+        const seeded = (p as any).seededThrees && (p as any).seededThrees > 0;
+        const hasThree = p.hand.some((c: any) => c.rank === "3");
+        return seeded || !hasThree;
+      });
+
+      if (everyoneSeeded) {
+        // Decide starting player: most threes; tie-breaker: had 3♠; else lowest position
+        const enriched = playersAll.map((p) => ({
+          userId: p.userId,
+          position: p.position,
+          threes: (p as any).seededThrees || 0,
+          hadSpadeThree: !!(p as any).hadThreeSpades,
+        }));
+
+        const maxThrees = Math.max(...enriched.map((e) => e.threes));
+        let candidates = enriched.filter((e) => e.threes === maxThrees);
+        let starter = candidates.find((c) => c.hadSpadeThree);
+        if (!starter) {
+          starter = candidates.sort((a, b) => a.position - b.position)[0];
+        }
+
+        await ctx.db.patch(args.gameId, {
+          seeding: false,
+          lastPlay: undefined,
+          currentPlayer: starter?.userId as any,
+          consecutivePasses: 0,
+        });
+        return args.gameId;
+      } else {
+        await ctx.db.patch(args.gameId, {
+          lastPlay: undefined,
+          currentPlayer: nextPlayer?.userId,
+          consecutivePasses: 0,
+        });
+        return args.gameId;
+      }
     }
 
-    // Special rule: first play must include 3 of diamonds
-    if (!game.lastPlay && !player.hasPlayed) {
-      const hasThreeOfDiamonds = args.cards.some(
-        (card) => card.rank === "3" && card.suit === "diamonds"
-      );
-      if (!hasThreeOfDiamonds) {
-        throw new Error("First play must include 3 of diamonds");
-      }
+    // Validate play against last play (normal phase)
+    if (!canBeatPlay(args.cards, game.lastPlay)) {
+      throw new Error("This play doesn't beat the last play");
     }
 
     // Remove played cards from hand
@@ -448,6 +552,51 @@ export const playCards = mutation({
 
     // Analyze the play
     const playAnalysis = analyzePlay(args.cards);
+
+    // Check for bomb scenario: a four-of-a-kind beating a single '2' (any suit)
+    const isBombScenario =
+      !!game.lastPlay &&
+      game.lastPlay.cards.length === 1 &&
+      game.lastPlay.cards[0].rank === "2" &&
+      playAnalysis.playType === "fourOfAKind";
+
+    if (isBombScenario) {
+      // End the game immediately, bomber wins, bombed player loses
+      const players = await ctx.db
+        .query("players")
+        .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+        .collect();
+
+      const bombedUserId = game.lastPlay!.playerId as any;
+      const bomberUserId = userId as any;
+
+      // Assign finish positions: bomber #1, bombed #N, everyone else 2..N-1 by table position
+      const sortedByPos = [...players].sort((a, b) => a.position - b.position);
+      let nextPos = 2;
+      for (const p of sortedByPos) {
+        if (p.userId === bomberUserId) {
+          await ctx.db.patch(p._id, { finished: true, finishPosition: 1 });
+        } else if (p.userId === bombedUserId) {
+          await ctx.db.patch(p._id, {
+            finished: true,
+            finishPosition: sortedByPos.length,
+          });
+        } else {
+          await ctx.db.patch(p._id, {
+            finished: true,
+            finishPosition: nextPos,
+          });
+          nextPos += 1;
+        }
+      }
+
+      await ctx.db.patch(args.gameId, {
+        status: "finished",
+        winner: bomberUserId,
+      });
+
+      return args.gameId;
+    }
 
     // Update game state
     const players = await ctx.db
@@ -509,7 +658,12 @@ export const passPlay = mutation({
     if (game.status !== "playing") throw new Error("Game not in progress");
     if (game.currentPlayer !== userId) throw new Error("Not your turn");
 
-    // Can't pass if no previous play (first player must play)
+    // Seeding phase pass: not allowed (everyone must attempt to play their 3s)
+    if ((game as any).seeding) {
+      throw new Error("Seeding phase: you must play 3s if you have them");
+    }
+
+    // Can't pass if no previous play (first player must play in normal phase)
     if (!game.lastPlay) {
       throw new Error("You must play cards (cannot pass on first turn)");
     }
