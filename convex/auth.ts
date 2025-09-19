@@ -67,8 +67,7 @@ const updateUserRecord = async (
   userId: Id<"users">,
   username: string
 ) => {
-  const update: any = { name: username, username };
-  await ctx.db.patch(userId, update);
+  await ctx.db.patch(userId, { name: username });
 };
 
 export const ensureGuestUsername = mutation({
@@ -81,11 +80,7 @@ export const ensureGuestUsername = mutation({
     if (!user) return null;
 
     const existing =
-      typeof (user as any).username === "string"
-        ? (user as any).username
-        : typeof (user as any).name === "string"
-          ? (user as any).name
-          : null;
+      typeof (user as any).name === "string" ? (user as any).name : null;
 
     if (existing && existing.trim().length > 0) return null;
 

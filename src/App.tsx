@@ -1,11 +1,11 @@
-import { Authenticated, Unauthenticated, useQuery } from "convex/react";
+import { Authenticated, Unauthenticated, useMutation, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { SignInForm } from "./SignInForm";
 import { SignOutButton } from "./SignOutButton";
-import { Toaster } from "sonner";
+import { Toaster, toast } from "sonner";
 import { GameLobby } from "./GameLobby";
 import { GameBoard } from "./GameBoard";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Id } from "../convex/_generated/dataModel";
 import backgroundUrl from "@assets/background.svg";
 import logoUrl from "@assets/LOGOS.svg";
@@ -61,6 +61,68 @@ function Content({
   setCurrentGameId: (id: Id<"games"> | null) => void;
 }) {
   const loggedInUser = useQuery(api.auth.loggedInUser);
+  const setUsername = useMutation(api.auth.setUsername);
+  const pendingUsernameRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (loggedInUser === undefined) return;
+
+    let pending: string | null = null;
+    try {
+      pending = localStorage.getItem("pendingUsername");
+    } catch {
+      pending = null;
+    }
+
+    if (!pending) {
+      pendingUsernameRef.current = null;
+      return;
+    }
+
+    if (!loggedInUser) {
+      pendingUsernameRef.current = null;
+      return;
+    }
+
+    if (loggedInUser.name === pending) {
+      try {
+        localStorage.removeItem("pendingUsername");
+      } catch {}
+      pendingUsernameRef.current = null;
+      return;
+    }
+
+    if (pendingUsernameRef.current === pending) {
+      return;
+    }
+
+    pendingUsernameRef.current = pending;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        await setUsername({ username: pending! });
+        if (!cancelled) {
+          pendingUsernameRef.current = null;
+          try {
+            localStorage.removeItem("pendingUsername");
+          } catch {}
+        }
+      } catch (error: any) {
+        if (!cancelled) {
+          const msg =
+            error?.message ||
+            (typeof error === "string" ? error : "Failed to update username");
+          toast.error(msg);
+          pendingUsernameRef.current = null;
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loggedInUser, setUsername]);
 
   if (loggedInUser === undefined) {
     return (

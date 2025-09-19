@@ -4,32 +4,11 @@ import { useState } from "react";
 import { toast } from "sonner";
 import loginBtnUrl from "@assets/login_button 2.svg";
 import registerBtnUrl from "@assets/register_button 1.svg";
-import { useMutation } from "convex/react";
-import { api } from "../convex/_generated/api";
-
 export function SignInForm() {
   const { signIn } = useAuthActions();
-  const setUsername = useMutation(api.auth.setUsername);
   const [flow, setFlow] = useState<"signIn" | "signUp">("signIn");
   const [submitting, setSubmitting] = useState(false);
   // Guest UI is moved to GuestSignIn component
-
-  const attemptSetUsername = async (username: string) => {
-    const maxAttempts = 3;
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        await setUsername({ username });
-        return;
-      } catch (err: any) {
-        const message = err?.message || String(err || "");
-        if (message.includes("Not authenticated") && attempt < maxAttempts) {
-          await new Promise((resolve) => setTimeout(resolve, 200 * attempt));
-          continue;
-        }
-        throw err;
-      }
-    }
-  };
 
   return (
     <div className="w-full">
@@ -46,7 +25,11 @@ export function SignInForm() {
             if (flow === "signUp") {
               const username = (formData.get("username") as string | null)?.trim();
               if (username && username.length > 0) {
-                await attemptSetUsername(username);
+                try {
+                  localStorage.setItem("pendingUsername", username);
+                } catch {
+                  // ignore storage errors
+                }
               }
             }
           } catch (error: any) {
