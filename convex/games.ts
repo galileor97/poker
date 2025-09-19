@@ -142,6 +142,41 @@ function analyzePlay(cards: Card[]): { playType: PlayType; value: number } {
   }
 
   if (cards.length >= 5) {
+    const rankCounts = cards.reduce<Record<string, number>>((acc, card) => {
+      acc[card.rank] = (acc[card.rank] || 0) + 1;
+      return acc;
+    }, {});
+
+    const countValues = Object.values(rankCounts).sort((a, b) => b - a);
+
+    if (cards.length === 5) {
+      if (countValues[0] === 4) {
+        const rankKeys = Object.keys(rankCounts);
+        const quadRank = rankKeys.find((rank) => rankCounts[rank] === 4)!;
+        const kickerRank = rankKeys.find((rank) => rankCounts[rank] === 1);
+
+        return {
+          playType: "fourOfAKind",
+          value:
+            getRankValue(quadRank) * 100 +
+            (kickerRank ? getRankValue(kickerRank) : 0),
+        };
+      }
+
+      if (countValues[0] === 3 && countValues[1] === 2) {
+        const rankKeys = Object.keys(rankCounts);
+        const tripleRank = rankKeys.find((rank) => rankCounts[rank] === 3)!;
+        const pairRank = rankKeys.find((rank) => rankCounts[rank] === 2);
+
+        return {
+          playType: "fullHouse",
+          value:
+            getRankValue(tripleRank) * 100 +
+            (pairRank ? getRankValue(pairRank) : 0),
+        };
+      }
+    }
+
     // Check for straight
     const isConsecutive = cards.every(
       (card, index) =>

@@ -448,13 +448,13 @@ export function GameBoard({ gameId, onLeave }: GameBoardProps) {
           )}
 
           {/* Center Area - Last Play */}
-          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-72 h-40">
+          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 min-w-[18rem] h-40">
             {game.lastPlay ? (
               <div className=" rounded-lg p-4 text-center">
                 <h3 className="text-sm font-semibold mb-2">
                   {getPlayTypeDisplay(game.lastPlay.playType)}
                 </h3>
-                <div className="flex gap-1 justify-center flex-wrap">
+                <div className="flex gap-1 justify-center flex-nowrap">
                   {game.lastPlay.cards.map((card, index) => (
                     <PlayingCard key={index} card={card} size="large" />
                   ))}
@@ -614,31 +614,39 @@ export function GameBoard({ gameId, onLeave }: GameBoardProps) {
             </summary>
             <div className="text-green-100 space-y-1 text-sm mt-3">
               <p>
-                • <strong>Goal:</strong> Be the first to play all your cards
+                • <strong>Goal:</strong> Be the first player to empty your
+                hand.
               </p>
               <p>
-                • <strong>Card Ranking:</strong> 3 (lowest) → 4, 5, 6, 7, 8, 9,
-                10, J, Q, K, A, 2 (highest)
+                • <strong>Initial Deal:</strong> Everyone is dealt 13 cards; the
+                player holding the 3♦ leads the very first turn.
+              </p>
+              <p>
+                • <strong>Card Ranking:</strong> 3 (lowest) → 4 → 5 → 6 → 7 → 8
+                → 9 → 10 → J → Q → K → A → 2 (highest).
               </p>
               <p>
                 • <strong>Suit Ranking:</strong> ♦ (lowest) → ♣ → ♥ → ♠
-                (highest)
+                (highest) for tie breakers on identical ranks.
               </p>
               <p>
-                • <strong>Valid Plays:</strong> Singles, Pairs, Triples,
-                Straights (5+ cards), Flushes, etc.
+                • <strong>Full House Rule:</strong> Compare the three-of-a-kind
+                first (e.g. 555JJ loses to 66699 because the triple six is
+                higher). The pair can be any rank once your triple wins.
               </p>
               <p>
-                • <strong>First Play:</strong> Must include 3♦ (Three of
-                Diamonds)
+                • <strong>Valid Plays:</strong> Singles, pairs, triples,
+                straights (5+ in sequence), flushes, full houses, four-of-a-kind
+                sets, and straight flushes.
               </p>
               <p>
-                • <strong>Beating Plays:</strong> Same type with higher rank, or
-                higher combination type
+                • <strong>Challenging Plays:</strong> To beat a hand, match its
+                length & type with a higher value or present a stronger
+                combination tier.
               </p>
               <p>
-                • <strong>Passing:</strong> If all others pass, the table clears
-                and you can play anything
+                • <strong>Passing:</strong> If everyone else passes, the table
+                clears and you may lead any valid combination.
               </p>
             </div>
           </details>
