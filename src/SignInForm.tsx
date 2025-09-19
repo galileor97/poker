@@ -9,32 +9,52 @@ import { api } from "../convex/_generated/api";
 
 export function SignInForm() {
   const { signIn } = useAuthActions();
+  const setUsername = useMutation(api.auth.setUsername);
   const [flow, setFlow] = useState<"signIn" | "signUp">("signIn");
   const [submitting, setSubmitting] = useState(false);
   // Guest UI is moved to GuestSignIn component
+
+  const attemptSetUsername = async (username: string) => {
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await setUsername({ username });
+        return;
+      } catch (err: any) {
+        const message = err?.message || String(err || "");
+        if (message.includes("Not authenticated") && attempt < maxAttempts) {
+          await new Promise((resolve) => setTimeout(resolve, 200 * attempt));
+          continue;
+        }
+        throw err;
+      }
+    }
+  };
 
   return (
     <div className="w-full">
       <form
         className="flex flex-col gap-form-field"
-        onSubmit={(e) => {
+        onSubmit={async (e) => {
           e.preventDefault();
           setSubmitting(true);
           const formData = new FormData(e.target as HTMLFormElement);
           formData.set("flow", flow);
-          void signIn("password", formData).catch((error) => {
-            let toastTitle = "";
-            if (error.message.includes("Invalid password")) {
-              toastTitle = "Invalid password. Please try again.";
-            } else {
-              toastTitle =
-                flow === "signIn"
-                  ? "Could not sign in, did you mean to sign up?"
-                  : "Could not sign up, did you mean to sign in?";
+          try {
+            await signIn("password", formData);
+            // If this was a sign up and a username was provided, set display name
+            if (flow === "signUp") {
+              const username = (formData.get("username") as string | null)?.trim();
+              if (username && username.length > 0) {
+                await attemptSetUsername(username);
+              }
             }
-            toast.error(toastTitle);
+          } catch (error: any) {
+            const msg = error?.message || (typeof error === "string" ? error : "Authentication failed");
+            toast.error(msg);
+          } finally {
             setSubmitting(false);
-          });
+          }
         }}
       >
         <input
@@ -45,12 +65,21 @@ export function SignInForm() {
           required
         />
         <input
-          className="auth-input-field"
+          className="auth-input-field !text-black placeholder:!text-black/60 caret-black"
           type="password"
           name="password"
           placeholder="Password"
           required
         />
+        {flow === "signUp" && (
+          <input
+            className="auth-input-field"
+            type="text"
+            name="username"
+            placeholder="Username"
+            required
+          />
+        )}
         <button
           className="w-full flex items-center justify-center"
           type="submit"

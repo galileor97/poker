@@ -27,6 +27,7 @@ const applicationTables = {
   players: defineTable({
     gameId: v.id("games"),
     userId: v.id("users"),
+    username: v.optional(v.string()),
     hand: v.array(v.object({
       suit: v.union(v.literal("hearts"), v.literal("diamonds"), v.literal("clubs"), v.literal("spades")),
       rank: v.union(
@@ -41,7 +42,7 @@ const applicationTables = {
     seededThrees: v.optional(v.number()),
     hadThreeSpades: v.optional(v.boolean()),
     finishPosition: v.optional(v.number()),
-  }).index("by_game", ["gameId"]).index("by_user_game", ["userId", "gameId"]),
+  }).index("by_game", ["gameId"]).index("by_user_game", ["userId", "gameId"]).index("by_user", ["userId"]),
 };
 
 export default defineSchema({

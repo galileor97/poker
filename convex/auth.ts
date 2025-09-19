@@ -3,6 +3,7 @@ import { Password } from "@convex-dev/auth/providers/Password";
 import { Anonymous } from "@convex-dev/auth/providers/Anonymous";
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { Id } from "./_generated/dataModel";
 
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
   providers: [Password, Anonymous],
@@ -61,7 +62,16 @@ function randomIndonesianName(): string {
   return `${f} ${l}`;
 }
 
-export const ensureGuestName = mutation({
+const updateUserRecord = async (
+  ctx: any,
+  userId: Id<"users">,
+  username: string
+) => {
+  const update: any = { name: username, username };
+  await ctx.db.patch(userId, update);
+};
+
+export const ensureGuestUsername = mutation({
   args: {},
   returns: v.null(),
   handler: async (ctx) => {
@@ -69,25 +79,41 @@ export const ensureGuestName = mutation({
     if (!userId) return null;
     const user = await ctx.db.get(userId);
     if (!user) return null;
-    const hasName =
-      typeof (user as any).name === "string" &&
-      (user as any).name.trim().length > 0;
-    if (hasName) return null;
-    const name = randomIndonesianName();
-    await ctx.db.patch(userId, { name });
+
+    const existing =
+      typeof (user as any).username === "string"
+        ? (user as any).username
+        : typeof (user as any).name === "string"
+          ? (user as any).name
+          : null;
+
+    if (existing && existing.trim().length > 0) return null;
+
+    const username = randomIndonesianName();
+    await updateUserRecord(ctx, userId, username);
     return null;
   },
 });
 
-export const setDisplayName = mutation({
-  args: { name: v.string() },
+export const setUsername = mutation({
+  args: { username: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
-    if (!userId) return null;
-    const name = args.name.trim();
-    if (name.length === 0) return null;
-    await ctx.db.patch(userId, { name });
+    if (!userId) throw new Error("Not authenticated");
+    const username = args.username.trim();
+    if (username.length === 0) throw new Error("Username is required");
+
+    await updateUserRecord(ctx, userId, username);
+
+    // Propagate to all player records for this user so lobby/game use up-to-date usernames
+    const players = await ctx.db
+      .query("players")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+    await Promise.all(
+      players.map((p) => ctx.db.patch(p._id, { username }))
+    );
     return null;
   },
 });

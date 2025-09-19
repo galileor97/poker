@@ -7,10 +7,26 @@ import guestBtnUrl from "@assets/guest_login_button 1.svg";
 
 export function GuestSignIn() {
   const { signIn } = useAuthActions();
-  const ensureGuestName = useMutation(api.auth.ensureGuestName);
-  const setDisplayName = useMutation(api.auth.setDisplayName);
-  const [guestName, setGuestName] = useState("");
+  const setUsername = useMutation(api.auth.setUsername);
+  const [guestUsername, setGuestUsername] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  const attemptSetUsername = async (username: string) => {
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await setUsername({ username });
+        return;
+      } catch (err: any) {
+        const message = err?.message || String(err || "");
+        if (message.includes("Not authenticated") && attempt < maxAttempts) {
+          await new Promise((resolve) => setTimeout(resolve, 200 * attempt));
+          continue;
+        }
+        throw err;
+      }
+    }
+  };
 
   return (
     <div className="w-full flex flex-col items-center">
@@ -19,8 +35,8 @@ export function GuestSignIn() {
         type="text"
         name="guestName"
         placeholder="Enter temporary username"
-        value={guestName}
-        onChange={(e) => setGuestName(e.target.value)}
+        value={guestUsername}
+        onChange={(e) => setGuestUsername(e.target.value)}
       />
       <button
         type="button"
@@ -28,17 +44,20 @@ export function GuestSignIn() {
         className="w-full flex items-center justify-center mt-3 disabled:opacity-50"
         disabled={submitting}
         onClick={async () => {
+          const username = guestUsername.trim();
+          if (username.length === 0) {
+            toast.error("Please enter a username to continue");
+            return;
+          }
+
           try {
             setSubmitting(true);
             await signIn("anonymous");
-            if (guestName.trim().length > 0) {
-              await setDisplayName({ name: guestName.trim() });
-            } else {
-              await ensureGuestName({});
-            }
+            await attemptSetUsername(username);
             toast.success("Signed in as guest");
-          } catch (err) {
-            toast.error("Guest sign-in failed");
+          } catch (err: any) {
+            const msg = err?.message || (typeof err === "string" ? err : "Guest sign-in failed");
+            toast.error(msg);
           } finally {
             setSubmitting(false);
           }

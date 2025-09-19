@@ -98,6 +98,11 @@ export function GameLobby({ onJoinGame }: GameLobbyProps) {
                     <p className="text-sm text-green-100">
                       {game.playerCount}/4 players
                     </p>
+                    {Array.isArray(game.playerUsernames) && (
+                      <p className="text-xs text-green-200 truncate max-w-[240px]">
+                        {game.playerUsernames.join(", ")}
+                      </p>
+                    )}
                     <p className="text-xs text-green-200">
                       Created {new Date(game.createdAt).toLocaleTimeString()}
                     </p>

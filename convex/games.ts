@@ -293,9 +293,11 @@ export const createGame = mutation({
       createdAt: Date.now(),
     });
 
+    const userDoc: any = await ctx.db.get(userId);
     await ctx.db.insert("players", {
       gameId,
       userId,
+      username: userDoc?.username || userDoc?.name,
       hand: [],
       position: 0,
       hasPlayed: false,
@@ -332,9 +334,11 @@ export const joinGame = mutation({
 
     if (players.length >= 4) throw new Error("Game is full");
 
+    const userDoc: any = await ctx.db.get(userId);
     await ctx.db.insert("players", {
       gameId: args.gameId,
       userId,
+      username: userDoc?.username || userDoc?.name,
       hand: [],
       position: players.length,
       hasPlayed: false,
@@ -727,14 +731,23 @@ export const getGame = query({
     const playersWithUsers = await Promise.all(
       players.map(async (player) => {
         const user: any = await ctx.db.get(player.userId);
-        const displayName =
+        const username =
+          player.username ||
+          user?.username ||
           user?.name ||
           (typeof player.position === "number"
             ? `Player ${player.position + 1}`
             : `User ${String(player.userId).slice(-4)}`);
+
         return {
           ...player,
-          user: user ? { name: user.name, displayName } : { displayName },
+          username,
+          user: user
+            ? {
+                username: user.username || user.name || username,
+                name: user.name,
+              }
+            : { username },
         };
       })
     );
@@ -770,9 +783,27 @@ export const listGames = query({
           .withIndex("by_game", (q) => q.eq("gameId", game._id))
           .collect();
 
+        // Fetch user names/display names for lobby display
+        const playersWithUsernames = await Promise.all(
+          players.map(async (p) => {
+            const user: any = await ctx.db.get(p.userId);
+            const username =
+              p.username ||
+              user?.username ||
+              user?.name ||
+              (typeof p.position === "number"
+                ? `Player ${p.position + 1}`
+                : `User ${String(p.userId).slice(-4)}`);
+            return { userId: p.userId, position: p.position, username };
+          })
+        );
+
         return {
           ...game,
           playerCount: players.length,
+          playerUsernames: playersWithUsernames
+            .sort((a, b) => a.position - b.position)
+            .map((p) => p.username),
         };
       })
     );

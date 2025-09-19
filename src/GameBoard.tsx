@@ -241,10 +241,11 @@ export function GameBoard({ gameId, onLeave }: GameBoardProps) {
     return types[playType] || playType;
   };
 
-  const getPlayerDisplayName = (player: any) => {
+  const getPlayerUsername = (player: any) => {
     if (!player) return "Unknown";
     return (
-      player.user?.displayName ||
+      player.username ||
+      player.user?.username ||
       player.user?.name ||
       (typeof player.position === "number"
         ? `Player ${player.position + 1}`
@@ -286,7 +287,7 @@ export function GameBoard({ gameId, onLeave }: GameBoardProps) {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {game.players.map((player, index) => (
                 <div key={player._id} className=" rounded-lg p-4">
-                  <p className="font-medium">{getPlayerDisplayName(player)}</p>
+                  <p className="font-medium">{getPlayerUsername(player)}</p>
                   <p className="text-sm text-green-100">
                     Position {player.position + 1}
                   </p>
@@ -339,7 +340,7 @@ export function GameBoard({ gameId, onLeave }: GameBoardProps) {
         <div className=" rounded-lg p-8 max-w-2xl mx-auto">
           <h2 className="text-3xl font-bold mb-4">🎉 Game Over! 🎉</h2>
           <p className="text-xl mb-6">
-            Winner: {winner ? getPlayerDisplayName(winner) : "Unknown"}
+            Winner: {winner ? getPlayerUsername(winner) : "Unknown"}
           </p>
 
           <div className="mb-6">
@@ -349,7 +350,7 @@ export function GameBoard({ gameId, onLeave }: GameBoardProps) {
                 <div key={player._id} className=" rounded-lg p-3">
                   <p className="flex justify-between items-center">
                     <span>
-                      #{player.finishPosition} - {getPlayerDisplayName(player)}
+                      #{player.finishPosition} - {getPlayerUsername(player)}
                     </span>
                     {player.finishPosition === 1 && (
                       <span className="text-yellow-400">👑</span>
@@ -393,7 +394,7 @@ export function GameBoard({ gameId, onLeave }: GameBoardProps) {
                 Big Two - Game in Progress
               </h2>
               <p className="text-green-100">
-                Current Turn: {getPlayerDisplayName(currentPlayerInfo)}
+                Current Turn: {getPlayerUsername(currentPlayerInfo)}
                 {game.isMyTurn && (
                   <span className="text-yellow-300 font-bold">
                     {" "}
@@ -460,7 +461,7 @@ export function GameBoard({ gameId, onLeave }: GameBoardProps) {
                   ))}
                 </div>
                 <p className="text-xs text-green-100 mt-2">
-                  {getPlayerDisplayName(
+                  {getPlayerUsername(
                     game.players.find(
                       (p) => p.userId === game.lastPlay?.playerId
                     )
@@ -484,7 +485,7 @@ export function GameBoard({ gameId, onLeave }: GameBoardProps) {
               <div className=" rounded-lg p-3 text-center">
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="font-semibold text-sm truncate flex-1 text-black">
-                    {getPlayerDisplayName(player)}
+                    {getPlayerUsername(player)}
                   </h4>
                   {player.userId === game.currentPlayer && (
                     <span className="bg-yellow-500 text-black text-xs px-2 py-1 rounded ml-2">
